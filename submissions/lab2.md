@@ -1,14 +1,14 @@
-# Lab 2 — Containerization: Inspect, Understand, Optimize
+# Lab 2 
 
 Liubov Utenysheva, CBS-03
 
 ---
 
-## Task 1 — Docker Inspection & Operations
+## Task 1 
 
 ### 2.1 Image inspection
 
-Largest images first. All three app images are on the `python:3.13-slim` base, so the bulk of the size is identical — the difference is the `pip install` layer (events has more dependencies).
+Largest images first. All three app images are on the `python:3.13-slim` base, so the bulk of the size is identical  the difference is the `pip install` layer (events has more dependencies).
 
 ```console
 $ docker images | grep app
@@ -39,9 +39,9 @@ ENV PATH=/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:
 # debian trixie base (python:3.13-slim)                                                        87.5MB
 ```
 
-**Answer:** the events image has **15 layers**. The single largest layer overall is the **Debian base image (87.5MB)** — everything that `python:3.13-slim` ships (glibc, coreutils, OpenSSL, …) is squashed into one layer we never built. Among the layers *our* Dockerfile adds, the largest is **`RUN pip install -r requirements.txt` (43.9MB)** — that is where all the Python dependencies (FastAPI, Uvicorn, httpx, psycopg, redis client) land, and it is bigger than our own code (main.py is only 20.5kB).
+**Answer:** the events image has **15 layers**. The single largest layer overall is the **Debian base image (87.5MB)**  everything that `python:3.13-slim` ships (glibc, coreutils, OpenSSL, …) is squashed into one layer we never built. Among the layers *our* Dockerfile adds, the largest is **`RUN pip install -r requirements.txt` (43.9MB)**  that is where all the Python dependencies (FastAPI, Uvicorn, httpx, psycopg, redis client) land, and it is bigger than our own code (main.py is only 20.5kB).
 
-### 2.2 Container inspection
+### 2.2
 
 Each service got an IP on the compose bridge network:
 
@@ -70,7 +70,7 @@ PYTHON_SHA256=1e66a7945a48390ee4c2a4268a0e4185884059a13c4aab6d148aa208deea4a76
 
 Only two of them are ours (`PAYMENT_LATENCY_MS`, `PAYMENT_FAILURE_RATE` from `docker-compose.yaml`); the rest inherit from the `python:3.13-slim` base image.
 
-### 2.3 Live debugging with exec
+### 2.3 
 
 ```console
 $ docker exec app-gateway-1 whoami
@@ -80,7 +80,7 @@ $ docker exec app-gateway-1 id
 uid=0(root) gid=0(root) groups=0(root)
 ```
 
-DNS configuration inside the gateway — name resolution happens in Docker's embedded DNS, not on the host:
+DNS configuration inside the gateway  name resolution happens in Docker's embedded DNS, not on the host:
 
 ```console
 $ docker exec app-gateway-1 cat /etc/resolv.conf
@@ -108,9 +108,9 @@ print(urllib.request.urlopen('http://payments:8082/health').read().decode())
 
 The gateway resolves `events` and `payments` to real IPs purely via the container name.
 
-### 2.4 Logs analysis
+### 2.4 
 
-Last 20 lines of each service before traffic (excerpt — the gateway was busy proxying `/events` calls):
+Last 20 lines of each service before traffic (excerpt -the gateway was busy proxying `/events` calls):
 
 ```console
 $ docker compose logs gateway --tail=5
@@ -144,9 +144,9 @@ events-1  | {"time":"2026-09-13 20:50:54,857","level":"INFO","service":"events",
 events-1  | INFO:     172.22.0.6:54270 - "POST /events/1/reserve HTTP/1.1" 200 OK
 ```
 
-**Yes, one request can be followed across services by matching timestamps** — the same `POST /events/1/reserve` shows up at `20:50:54,85×` in both logs 3ms apart, carries the same `reservation_id` (`7cbba6d8-…`), and the events-side client address `172.22.0.6` is exactly the gateway's IP from 2.2, so we know the traffic came from the gateway.
+**Yes, one request can be followed across services by matching timestamps** -the same `POST /events/1/reserve` shows up at `20:50:54,85×` in both logs 3ms apart, carries the same `reservation_id` (`7cbba6d8-…`), and the events-side client address `172.22.0.6` is exactly the gateway's IP from 2.2, so we know the traffic came from the gateway.
 
-### 2.5 Network inspection
+### 2.5 
 
 ```console
 $ docker network ls | grep app
@@ -162,11 +162,11 @@ app-payments-1: 172.22.0.2/16
 
 ### Task 1 written answer
 
-**How does the gateway find the events service?** The gateway's Dockerfile/compose file contains no IP — the code calls `http://events:8081` (the `EVENTS_URL` env var). Every container in the compose project is attached to the bridge network `app_default`, and Docker runs an **embedded DNS server at 127.0.0.11** (visible as `nameserver` in the gateway's `/etc/resolv.conf`). When the gateway's HTTP client resolves the hostname `events`, that DNS server answers from the compose service name. In this run **`events` resolved to `172.22.0.5`** (the IP of `app-events-1` on `app_default`). That is why service discovery keeps working even after `docker compose down && up` reassigns IPs — names are stable, IPs are not.
+**How does the gateway find the events service?** The gateway's Dockerfile/compose file contains no IP -the code calls `http://events:8081` (the `EVENTS_URL` env var). Every container in the compose project is attached to the bridge network `app_default`, and Docker runs an **embedded DNS server at 127.0.0.11** (visible as `nameserver` in the gateway's `/etc/resolv.conf`). When the gateway's HTTP client resolves the hostname `events`, that DNS server answers from the compose service name. In this run **`events` resolved to `172.22.0.5`** (the IP of `app-events-1` on `app_default`). That is why service discovery keeps working even after `docker compose down && up` reassigns IPs -names are stable, IPs are not.
 
 ---
 
-## Task 2 — Dockerfile Optimization
+## Task 2
 
 ### 2.7 .dockerignore
 
@@ -202,9 +202,9 @@ app-gateway:latest   27376dc8d282   226MB   55.2MB
 app-payments:latest  adfff8c536f6   223MB   54.7MB
 ```
 
-**Any difference?** No — the image sizes are identical to the megabyte. That is expected here: each build context is just the service directory containing `main.py` (~10kB) and `requirements.txt` (<100B); there is no `.git/`, `__pycache__/` or docs inside the context, so `.dockerignore` excludes nothing. It is still worth keeping: it protects the build context from accidental bloat (a nested repo, a large log or `.env` with secrets dropped into the folder) and makes the intent explicit — in a real project with a fat context it is the single most effective size lever.
+**Any difference?** No the image sizes are identical to the megabyte. That is expected here: each build context is just the service directory containing `main.py` (~10kB) and `requirements.txt` (<100B); there is no `.git/`, `__pycache__/` or docs inside the context, so `.dockerignore` excludes nothing. It is still worth keeping: it protects the build context from accidental bloat (a nested repo, a large log or `.env` with secrets dropped into the folder) and makes the intent explicit -in a real project with a fat context it is the single most effective size lever.
 
-### 2.8 Non-root user
+### 2.8 
 
 Added to each of the three Dockerfiles, before the `CMD`:
 
@@ -213,7 +213,7 @@ RUN addgroup --system app && adduser --system --ingroup app app
 USER app
 ```
 
-No `chown` was needed: the app only reads `main.py` (world-readable) and writes nothing to disk — all output goes to stdout.
+No `chown` was needed: the app only reads `main.py` (world-readable) and writes nothing to disk all output goes to stdout.
 
 Rebuilt and restarted:
 
@@ -281,7 +281,7 @@ index 7f9e7c1..8cf997d 100644
 
 ---
 
-## Bonus Task — Trace a Request Across Services
+## Bonus Task 
 
 Cleared logs, restarted, then ran a full purchase (reserve → pay):
 
@@ -321,12 +321,12 @@ Annotated hop-by-hop:
 
 | Time (ms part) | Service | What it did | Δ since previous hop |
 |---|---|---|---|
-| 34,221 | events | `Reserved 1 tickets` — tickets held, reservation written (Postgres + Redis) | — (start of request 1) |
+| 34,221 | events | `Reserved 1 tickets` -tickets held, reservation written (Postgres + Redis) | -(start of request 1) |
 | 34,223 | gateway | httpx client logs the reserve response `200 OK` (events → gateway) | ~2 ms |
 | 34,224 | gateway | access log: client got `POST /events/1/reserve 200` (request 1 done) | ~1 ms |
-| 34,257 | payments | `Payment success: PAY-0A41E814` — charge completed | ~33 ms (includes client-side gap: parsing reserve response, launching 2nd curl) |
+| 34,257 | payments | `Payment success: PAY-0A41E814` -charge completed | ~33 ms (includes client-side gap: parsing reserve response, launching 2nd curl) |
 | 34,259 | gateway | httpx logs charge response `200 OK` (payments → gateway) | ~2 ms |
-| 34,269 | events | `Order confirmed` — held tickets converted to a confirmed order | ~10 ms (gateway processing after charge + events DB/Redis writes) |
+| 34,269 | events | `Order confirmed` -held tickets converted to a confirmed order | ~10 ms (gateway processing after charge + events DB/Redis writes) |
 | 34,271 | gateway | httpx logs confirm response; access log sends final `POST /reserve/…/pay 200` to client | ~2 ms |
 
-**End-to-end time:** for the `pay` request — the one that crosses all three services — the gateway's first observable action (payments already having finished processing at `34,257`) to the final response at `34,271` is **≈ 14 ms**; that is a lower bound because the gateway does not timestamp request *receipt*, only response completion, so the true gateway-side duration is slightly longer (order of ~15–25 ms). Every single service hop (gateway↔events, gateway↔payments) measured **~2 ms** — the inter-container network overhead on the bridge is negligible next to application processing (the ~10 ms confirm step is dominated by the events service doing its DB/Redis work, not the network).
+**End-to-end time:** for the `pay` request -the one that crosses all three services -the gateway's first observable action (payments already having finished processing at `34,257`) to the final response at `34,271` is **≈ 14 ms**; that is a lower bound because the gateway does not timestamp request *receipt*, only response completion, so the true gateway-side duration is slightly longer (order of ~15–25 ms). Every single service hop (gateway↔events, gateway↔payments) measured **~2 ms** -the inter-container network overhead on the bridge is negligible next to application processing (the ~10 ms confirm step is dominated by the events service doing its DB/Redis work, not the network).
